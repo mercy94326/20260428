@@ -2,6 +2,65 @@
 import { ref, computed, onUnmounted, onMounted, watch } from 'vue';
 import QRCode from 'qrcode';
 
+// --- 滑鼠飄雪特效邏輯 ---
+const snowCanvas = ref(null);
+const particles = [];
+
+const initSnow = () => {
+  const canvas = snowCanvas.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let w = canvas.width = window.innerWidth;
+  let h = canvas.height = window.innerHeight;
+
+  window.addEventListener('resize', () => {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  });
+
+  const animate = () => {
+    ctx.clearRect(0, 0, w, h);
+    
+    // 背景偶爾產生的自然落雪
+    if (Math.random() < 0.05) {
+      particles.push({ x: Math.random() * w, y: -10, vx: Math.random() - 0.5, vy: Math.random() * 1.2 + 0.5, size: Math.random() * 3 + 1, opacity: 1 });
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.opacity -= 0.003; // 緩慢透明
+
+      if (p.y > h || p.opacity <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(animate);
+  };
+  animate();
+};
+
+const handleMouseMove = (e) => {
+  // 隨滑鼠移動產生雪花粒子
+  for (let i = 0; i < 2; i++) {
+    particles.push({
+      x: e.clientX,
+      y: e.clientY,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: Math.random() * 1.2 + 0.5,
+      size: Math.random() * 3 + 1,
+      opacity: 0.8
+    });
+  }
+};
+
 // --- 0. 通用設定與點名系統 --- 
 const activeTab = ref(localStorage.getItem('activeTab') || 'attendance');
 
@@ -317,6 +376,8 @@ onMounted(() => {
     timeLeft.value = timerMinutes.value * 60; 
   }
 
+  initSnow();
+
   // 初始生成預設連結的 QR Code
   generateQuizQRCode();
 });
@@ -325,7 +386,8 @@ onUnmounted(() => clearInterval(timerInterval));
 </script>
 
 <template>
-  <div class="teaching-tool-container">
+  <div class="teaching-tool-container" @mousemove="handleMouseMove">
+    <canvas ref="snowCanvas" class="snow-canvas"></canvas>
     <header class="app-header">
       <div class="nav-menu">
         <select v-model="activeTab" class="nav-select">
@@ -334,7 +396,7 @@ onUnmounted(() => clearInterval(timerInterval));
           </option>
         </select>
       </div>
-      <h1 class="main-title">🎄 教學輔助聖誕專區</h1>
+      <h1 class="main-title">教學輔助平台</h1>
       <div class="header-spacer"></div>
     </header>
 
@@ -533,7 +595,8 @@ onUnmounted(() => clearInterval(timerInterval));
   margin: 0;
   flex-grow: 1;
   text-align: center;
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+  color: #ffffff !important;
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
 }
 
 .header-spacer { width: 150px; } /* 平衡左側選單的寬度，讓標題居中 */
@@ -547,8 +610,12 @@ h2 {
 
 .main-view {
   animation: fadeIn 0.3s ease-in-out;
-  max-width: 800px;
+  max-width: 100%;
   margin: 0 auto;
+  /* 設定統一的最小高度，防止功能切換時畫面跳動 */
+  min-height: 85vh;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes fadeIn {
@@ -578,7 +645,7 @@ h2 {
 
 .teaching-tool-container {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  max-width: 1000px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 40px 20px;
   color: #f8fafc;
@@ -609,7 +676,6 @@ h1 {
   margin-bottom: 40px; 
   letter-spacing: 0.1em;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.5), 0 0 20px rgba(255, 255, 255, 0.2);
-  animation: goldGlow 3s ease-in-out infinite alternate;
 }
 
 .grid-layout {
@@ -784,5 +850,15 @@ button:active { transform: translateY(0); }
 .danger-btn:hover {
   background-color: #c0392b;
   border-color: #c0392b;
+}
+
+.snow-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 100;
 }
 </style>
