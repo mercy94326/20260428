@@ -204,6 +204,15 @@ const triviaQuestion = ref(null);
 const selectedOption = ref('');
 const showTriviaAnswer = ref(false);
 
+// 新增：已測驗學生名單，從 localStorage 載入
+const quizzedStudents = ref(JSON.parse(localStorage.getItem('quizzedStudents') || '[]'));
+
+// 監聽 quizzedStudents 變化，自動儲存到 localStorage
+watch(quizzedStudents, (newVal) => {
+  localStorage.setItem('quizzedStudents', JSON.stringify(newVal));
+}, { deep: true }); // 使用 deep watch 以監聽陣列內物件的變化
+
+
 const drawTrivia = () => {
   const names = studentInput.value.split(/[,，\s]+/).map(n => n.trim()).filter(n => n);
   if (names.length === 0) {
@@ -212,8 +221,16 @@ const drawTrivia = () => {
   }
   
   // 隨機選學生
-  const studentIdx = Math.floor(Math.random() * names.length);
-  triviaStudent.value = names[studentIdx];
+  const studentIdx = Math.floor(Math.random() * names.length); // 隨機選取一個學生
+  const drawnStudent = names[studentIdx];
+  triviaStudent.value = drawnStudent;
+
+  // 將測驗過的學生加入列表，並確保在最前面，如果已存在則移到最前面
+  const existingIndex = quizzedStudents.value.findIndex(s => s.name === drawnStudent);
+  if (existingIndex !== -1) {
+    quizzedStudents.value.splice(existingIndex, 1); // 移除已存在的紀錄
+  }
+  quizzedStudents.value.unshift({ name: drawnStudent, timestamp: new Date().toLocaleString() }); // 加入到最前面，並記錄時間
   
   // 隨機選題目
   const questionIdx = Math.floor(Math.random() * triviaQuestions.length);
@@ -222,6 +239,42 @@ const drawTrivia = () => {
   selectedOption.value = '';
   // 重置答案顯示狀態
   showTriviaAnswer.value = false;
+};
+
+// 新增：匯出已測驗學生名單
+const exportQuizzedStudents = () => {
+  if (quizzedStudents.value.length === 0) {
+    alert('沒有測驗過的學生名單可匯出！');
+    return;
+  }
+  const now = new Date();
+  const dateStr = now.toLocaleDateString();
+  const timeStr = now.toLocaleTimeString();
+
+  const content = [
+    `教學輔助平台 - 隨堂問答紀錄`,
+    `日期：${dateStr} ${timeStr}`,
+    `--------------------------`,
+    `測驗學生名單：`,
+    ...quizzedStudents.value.map(s => `- ${s.name} (測驗時間: ${s.timestamp})`),
+    `--------------------------`
+  ].join('\n');
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `隨堂問答名單_${dateStr.replace(/[\/\\]/g, '-')}.txt`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+// 新增：清空已測驗學生名單
+const clearQuizzedStudents = () => {
+  if (confirm('確定要清空所有測驗過的學生紀錄嗎？')) {
+    quizzedStudents.value = [];
+    localStorage.removeItem('quizzedStudents');
+  }
 };
 
 // --- 5. 課堂測驗 QR Code 邏輯 ---
@@ -383,6 +436,22 @@ onUnmounted(() => clearInterval(timerInterval));
           <button @click="drawTrivia" class="btn-primary">🎲 抽出幸運兒</button>
         </div>
         
+        <!-- 新增：已測驗學生名單顯示區 -->
+        <div v-if="quizzedStudents.length > 0" class="quizzed-students-history">
+          <h3>已測驗學生 (最新在最上)</h3>
+          <div class="history-controls">
+            <button @click="exportQuizzedStudents" class="btn-outline">💾 匯出名單</button>
+            <button @click="clearQuizzedStudents" class="btn-outline danger-btn">🗑️ 清空紀錄</button>
+          </div>
+          <TransitionGroup name="list" tag="ul" class="quizzed-list">
+            <li v-for="student in quizzedStudents" :key="student.name">
+              {{ student.name }} <span class="quizzed-timestamp">({{ student.timestamp }})</span>
+            </li>
+          </TransitionGroup>
+        </div>
+        <!-- 結束新增 -->
+
+
         <div v-if="triviaStudent" class="trivia-container">
           <div class="trivia-target">
             🎯 請回答同學：<span class="highlight">{{ triviaStudent }}</span>
@@ -658,5 +727,62 @@ button:active { transform: translateY(0); }
   font-weight: bold; 
   text-shadow: 0 0 10px rgba(46, 204, 113, 0.4);
   animation: fadeIn 0.5s ease;
+}
+
+/* 新增的樣式 */
+.quizzed-students-history {
+  margin-top: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  border: 1px solid rgba(241, 196, 15, 0.1);
+  margin-bottom: 30px;
+}
+.quizzed-students-history h3 {
+  color: #f1c40f;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.quizzed-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px; /* 限制高度並允許滾動 */
+  overflow-y: auto;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 10px;
+}
+.quizzed-list li {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  margin-bottom: 5px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+  color: #e2e8f0;
+}
+.quizzed-timestamp {
+  font-size: 0.8em;
+  color: #a0aec0;
+}
+.history-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.danger-btn {
+  background-color: #e74c3c;
+  color: white;
+  border-color: #e74c3c;
+}
+.danger-btn:hover {
+  background-color: #c0392b;
+  border-color: #c0392b;
 }
 </style>
